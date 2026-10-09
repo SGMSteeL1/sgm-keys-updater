@@ -1,0 +1,54 @@
+name: Build SGM Keys Updater
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - apply_sgm.py
+      - .github/workflows/build-sgm.yml
+      - tests/**
+permissions:
+  contents: read
+jobs:
+  payload:
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkitarm:latest
+    steps:
+      - name: Checkout SGM BuildKit
+        uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git make build-essential python3 zip
+      - name: Test patch logic
+        run: python3 -m unittest discover -s tests -v
+      - name: Fetch Lockpick RCM 2.0.1 source
+        run: git clone --depth 1 --branch 2.0.1 https://github.com/THZoria/Lockpick_RCMaster.git upstream
+      - name: Verify upstream version
+        run: |
+          test "$(git -C upstream describe --tags --exact-match)" = "2.0.1"
+      - name: Patch source
+        run: python3 apply_sgm.py upstream
+      - name: Build Hekate payload
+        run: make -C upstream -j2
+      - name: Assemble package
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s upstream/output/Lockpick_RCM.bin
+          size=$(wc -c < upstream/output/Lockpick_RCM.bin)
+          echo "Payload size: $size bytes"
+          if (( size > 126296 )); then echo 'Payload exceeds upstream Lockpick hard size bound; STOP' >&2; exit 1; fi
+          mkdir -p dist/bootloader/payloads
+          cp upstream/output/Lockpick_RCM.bin dist/bootloader/payloads/SGM_Keys_Updater.bin
+          cd dist
+          zip -r ../SGM_Keys_Updater_V2_Hekate.zip bootloader
+      - name: Upload payload ZIP and standalone BIN
+        uses: actions/upload-artifact@v4
+        with:
+          name: SGM-Keys-Updater-V2
+          path: |
+            SGM_Keys_Updater_V2_Hekate.zip
+            dist/bootloader/payloads/SGM_Keys_Updater.bin
+          if-no-files-found: error

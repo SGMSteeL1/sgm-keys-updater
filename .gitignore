@@ -1,0 +1,6 @@
+upstream/
+dist/
+__pycache__/
+*.keys
+keys.txt
+keys.sgm.bak
