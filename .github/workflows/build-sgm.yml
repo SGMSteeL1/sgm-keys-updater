@@ -26,8 +26,17 @@ jobs:
       - name: Fetch Lockpick RCM 2.0.1 source
         run: git clone --depth 1 --branch 2.0.1 https://github.com/THZoria/Lockpick_RCMaster.git upstream
       - name: Verify upstream version
+        shell: bash
         run: |
-          test "$(git -C upstream describe --tags --exact-match)" = "2.0.1"
+          set -euo pipefail
+          expected="7159d471ac91d407c3fa0407c73793f8af28d25c"
+          actual="$(git -C upstream rev-parse HEAD)"
+          echo "Expected commit: $expected"
+          echo "Checked out commit: $actual"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "Unexpected upstream version" >&2
+            exit 1
+          fi
       - name: Patch source
         run: python3 apply_sgm.py upstream
       - name: Build Hekate payload
