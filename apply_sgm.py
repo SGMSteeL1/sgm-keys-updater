@@ -118,10 +118,10 @@ STAGE_PATCHES = (
      '''    _sgm_stage(4, "Keys computed. Scanning tickets, may take 2+ min");
     titlekey_buffer_t *titlekey_buffer = (titlekey_buffer_t *)TITLEKEY_BUF_ADR;'''),
     ('''    end_time = get_tmr_us();
-    gfx_printf("%kLockpick totally done in %d us\n", colors[(color_idx++) % 6], end_time - start_whole_operation_time);''',
+    gfx_printf("%kLockpick totally done in %d us\\n", colors[(color_idx++) % 6], end_time - start_whole_operation_time);''',
      '''    _sgm_stage(5, "Tickets scanned");
     end_time = get_tmr_us();
-    gfx_printf("%kLockpick totally done in %d us\n", colors[(color_idx++) % 6], end_time - start_whole_operation_time);'''),
+    gfx_printf("%kLockpick totally done in %d us\\n", colors[(color_idx++) % 6], end_time - start_whole_operation_time);'''),
     ('''        _save_keys_to_sd(keys, titlekey_buffer, is_dev, NULL, 0);''',
      '''        _sgm_stage(6, "Writing key files");
         _save_keys_to_sd(keys, titlekey_buffer, is_dev, NULL, 0);'''),
