@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SGM Keys Updater 2.0: add local automatic Tinfoil export to Lockpick_RCM.
+"""SGM Keys Updater 2.1: add local automatic Tinfoil export to Lockpick_RCM.
 
 Target: THZoria/Lockpick_RCMaster v2.0.1; GPLv2 derivative.
 No keys or console secrets are packaged in this source distribution.
@@ -78,6 +78,65 @@ static void _sgm_export_tinfoil_keys(const char *key_data)
 
 '''
 
+PROGRESS_HELPERS = r'''/* SGM V2.1 - stage-based progress; no synthetic byte percentage. */
+static u32 _sgm_started_us = 0;
+static void _sgm_stage(u32 finished, const char *description)
+{
+    char indicator[17];
+    u32 blocks = finished * 16 / 7;
+    u32 i;
+    for (i = 0; i < 16; i++)
+        indicator[i] = i < blocks ? '#' : '.';
+    indicator[16] = 0;
+    if (finished == 0)
+        _sgm_started_us = get_tmr_us();
+    gfx_printf("\nSGM [%s] phase %d/7: %s\n", indicator, finished, description);
+    gfx_printf("SGM elapsed: %d seconds\n", (get_tmr_us() - _sgm_started_us) / 1000000);
+}
+
+'''
+
+# Track real completed milestones, not a guessed completion percentage.
+STAGE_PATCHES = (
+    ('''    u32 start_whole_operation_time = get_tmr_us();''',
+     '''    _sgm_stage(0, "Reading NAND - do not power off");
+    u32 start_whole_operation_time = get_tmr_us();'''),
+    ('''    minerva_periodic_training();
+
+    if (emmc_storage.initialized && !emummc_storage_set_mmc_partition(EMMC_BOOT0)) {''',
+     '''    _sgm_stage(1, "MMC initialized");
+    minerva_periodic_training();
+
+    if (emmc_storage.initialized && !emummc_storage_set_mmc_partition(EMMC_BOOT0)) {'''),
+    ('''    TPRINTFARGS("%kMaster keys...  ", colors[(color_idx++) % 6]);''',
+     '''    TPRINTFARGS("%kMaster keys...  ", colors[(color_idx++) % 6]);
+    _sgm_stage(2, "Master keys derived");'''),
+    ('''    TPRINTFARGS("%kBIS keys...     ", colors[(color_idx++) % 6]);''',
+     '''    TPRINTFARGS("%kBIS keys...     ", colors[(color_idx++) % 6]);
+    _sgm_stage(3, "BIS keys derived");'''),
+    ('''    titlekey_buffer_t *titlekey_buffer = (titlekey_buffer_t *)TITLEKEY_BUF_ADR;''',
+     '''    _sgm_stage(4, "Keys computed. Scanning tickets, may take 2+ min");
+    titlekey_buffer_t *titlekey_buffer = (titlekey_buffer_t *)TITLEKEY_BUF_ADR;'''),
+    ('''    end_time = get_tmr_us();
+    gfx_printf("%kLockpick totally done in %d us\n", colors[(color_idx++) % 6], end_time - start_whole_operation_time);''',
+     '''    _sgm_stage(5, "Tickets scanned");
+    end_time = get_tmr_us();
+    gfx_printf("%kLockpick totally done in %d us\n", colors[(color_idx++) % 6], end_time - start_whole_operation_time);'''),
+    ('''        _save_keys_to_sd(keys, titlekey_buffer, is_dev, NULL, 0);''',
+     '''        _sgm_stage(6, "Writing key files");
+        _save_keys_to_sd(keys, titlekey_buffer, is_dev, NULL, 0);'''),
+    ('''        _save_keys_to_sd(&prod_keys, titlekey_buffer, false, &new_keys, new_gen_mkr);''',
+     '''        _sgm_stage(6, "Writing key files");
+        _save_keys_to_sd(&prod_keys, titlekey_buffer, false, &new_keys, new_gen_mkr);'''),
+    ('''        _save_keys_to_sd(&dev_keys, NULL, true, &new_keys_dev, new_gen_mkr);
+    }
+}''',
+     '''        _save_keys_to_sd(&dev_keys, NULL, true, &new_keys_dev, new_gen_mkr);
+    }
+    _sgm_stage(7, "Operation ended - inspect result above");
+}'''),
+)
+
 KEY_SAVE_BLOCK = '''    FILINFO fno;
     if (!sd_save_to_file(text_buffer, strlen(text_buffer), keyfile_path) && !f_stat(keyfile_path, &fno)) {
         gfx_printf("%kWrote %d bytes to %s\\n", colors[(color_idx++) % 6], (u32)fno.fsize, keyfile_path);
@@ -104,7 +163,7 @@ MAIN_BLOCK = '''\tminerva_change_freq(FREQ_800);
 MAIN_REPLACEMENT = '''\tminerva_change_freq(FREQ_800);
 
 \t/* SGM: automatic local dump at startup; original menu remains available. */
-\tgfx_printf("\\n=== SGM Keys Updater 2.0 ===\\n");
+\tgfx_printf("\\n=== SGM Keys Updater 2.1 ===\\n");
 \tif (!h_cfg.emummc_force_disable && emu_cfg.enabled) {
 \t\tgfx_printf("SGM: extracting configured emuMMC keys...\\n");
 \t\tdump_emunand();
@@ -122,8 +181,8 @@ MAIN_REPLACEMENT = '''\tminerva_change_freq(FREQ_800);
 
 def transform(keys_source: str, main_source: str) -> tuple[str, str]:
     """Patch both files in memory before writing either one."""
-    if "_sgm_export_tinfoil_keys" in keys_source or "SGM Keys Updater 2.0" in main_source:
-        if "_sgm_export_tinfoil_keys" in keys_source and "SGM Keys Updater 2.0" in main_source:
+    if "_sgm_export_tinfoil_keys" in keys_source or "SGM Keys Updater 2.1" in main_source:
+        if "_sgm_export_tinfoil_keys" in keys_source and "SGM Keys Updater 2.1" in main_source:
             return keys_source, main_source
         raise ValueError("Patching incomplete; do not apply over a partially patched source tree")
     if keys_source.count(KEY_SAVE_BLOCK) != 1:
@@ -133,8 +192,12 @@ def transform(keys_source: str, main_source: str) -> tuple[str, str]:
         raise ValueError("Could not locate the key save function")
     if main_source.count(MAIN_BLOCK) != 1:
         raise ValueError("Unexpected main.c layout: source version incompatible")
-    new_keys = keys_source.replace(before_fn, EXPORT_FUNCTION + before_fn, 1)
+    new_keys = keys_source.replace(before_fn, EXPORT_FUNCTION + PROGRESS_HELPERS + before_fn, 1)
     new_keys = new_keys.replace(KEY_SAVE_BLOCK, KEY_REPLACEMENT, 1)
+    for original, patched in STAGE_PATCHES:
+        if new_keys.count(original) != 1:
+            raise ValueError("Progress anchor changed in upstream source: " + original[:65])
+        new_keys = new_keys.replace(original, patched, 1)
     new_main = main_source.replace(MAIN_BLOCK, MAIN_REPLACEMENT, 1)
     return new_keys, new_main
 
@@ -158,7 +221,7 @@ def main() -> int:
         return 0
     keys.write_text(keys_new)
     main_file.write_text(main_new)
-    print("SGM Keys Updater 2.0 patch applied to", args.source)
+    print("SGM Keys Updater 2.1 patch applied to", args.source)
     return 0
 
 if __name__ == "__main__":

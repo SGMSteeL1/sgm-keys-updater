@@ -31,10 +31,10 @@ jobs:
           set -euo pipefail
           expected="7159d471ac91d407c3fa0407c73793f8af28d25c"
           actual="$(git -C upstream rev-parse HEAD)"
-          echo "Expected commit: $expected"
+          echo "Expected Lockpick 2.0.1 commit: $expected"
           echo "Checked out commit: $actual"
           if [[ "$actual" != "$expected" ]]; then
-            echo "Unexpected upstream version" >&2
+            echo "Unexpected upstream version. Stopping the build." >&2
             exit 1
           fi
       - name: Patch source
@@ -52,12 +52,12 @@ jobs:
           mkdir -p dist/bootloader/payloads
           cp upstream/output/Lockpick_RCM.bin dist/bootloader/payloads/SGM_Keys_Updater.bin
           cd dist
-          zip -r ../SGM_Keys_Updater_V2_Hekate.zip bootloader
+          zip -r ../SGM_Keys_Updater_V2_1_Hekate.zip bootloader
       - name: Upload payload ZIP and standalone BIN
         uses: actions/upload-artifact@v4
         with:
-          name: SGM-Keys-Updater-V2
+          name: SGM-Keys-Updater-V2.1
           path: |
-            SGM_Keys_Updater_V2_Hekate.zip
+            SGM_Keys_Updater_V2_1_Hekate.zip
             dist/bootloader/payloads/SGM_Keys_Updater.bin
           if-no-files-found: error
